@@ -371,6 +371,8 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
 
     fun putStartPage(page: Int) {
         mSpiderInfo.startPage = page
+        // Persist progress immediately after each page change.
+        launchIO { writeSpiderInfoToLocal() }
     }
 
     private fun readSpiderInfoFromLocal(): SpiderInfo? = mSpiderDen.downloadDir?.run {
