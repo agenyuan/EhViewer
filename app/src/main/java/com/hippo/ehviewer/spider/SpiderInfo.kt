@@ -15,6 +15,7 @@
  */
 package com.hippo.ehviewer.spider
 
+import android.util.AtomicFile
 import android.util.Log
 import coil3.disk.DiskCache
 import com.hippo.ehviewer.EhApplication
@@ -24,6 +25,7 @@ import com.hippo.unifile.openInputStream
 import com.hippo.unifile.openOutputStream
 import com.hippo.util.runSuspendCatching
 import com.hippo.yorozuya.NumberUtils
+import java.io.File
 import java.io.InputStream
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.cbor.Cbor
@@ -45,6 +47,49 @@ class SpiderInfo(
 )
 
 private val cbor = Cbor { ignoreUnknownKeys = true }
+
+private val spiderInfoDirectory by lazy {
+    File(EhApplication.application.filesDir, "spider_info_v2").apply {
+        if (!exists()) mkdirs()
+    }
+}
+
+/**
+ * Reads reading progress from app-private persistent storage.
+ * Unlike cacheDir, filesDir is not subject to Android's automatic cache eviction.
+ */
+fun readFromPersistentStorage(gid: Long): SpiderInfo? = runCatching {
+    val file = File(spiderInfoDirectory, gid.toString())
+    if (!file.isFile) {
+        null
+    } else {
+        AtomicFile(file).openRead().use {
+            cbor.decodeFromByteArray<SpiderInfo>(it.readBytes())
+        }
+    }
+}.onFailure {
+    Log.e(TAG, "Failed to read persistent spider info", it)
+}.getOrNull()
+
+/**
+ * Atomically saves reading progress to app-private persistent storage.
+ */
+fun SpiderInfo.saveToPersistentStorage() = runSuspendCatching {
+    if (!spiderInfoDirectory.exists() && !spiderInfoDirectory.mkdirs()) {
+        error("Unable to create spider info directory")
+    }
+    val atomicFile = AtomicFile(File(spiderInfoDirectory, gid.toString()))
+    val output = atomicFile.startWrite()
+    try {
+        output.write(cbor.encodeToByteArray(this@saveToPersistentStorage))
+        atomicFile.finishWrite(output)
+    } catch (t: Throwable) {
+        atomicFile.failWrite(output)
+        throw t
+    }
+}.onFailure {
+    Log.e(TAG, "Failed to save persistent spider info", it)
+}
 
 private val spiderInfoCache by lazy {
     DiskCache.Builder()
