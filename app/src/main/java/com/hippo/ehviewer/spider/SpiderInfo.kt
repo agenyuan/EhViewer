@@ -46,7 +46,6 @@ class SpiderInfo(
     var upgradeFrom: Long? = null,
 )
 
-
 private val cbor = Cbor { ignoreUnknownKeys = true }
 
 private val spiderInfoDirectory by lazy {
