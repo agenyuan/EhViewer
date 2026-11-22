@@ -375,14 +375,28 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
         launchIO { writeSpiderInfoToLocal() }
     }
 
-    private fun readSpiderInfoFromLocal(): SpiderInfo? = mSpiderDen.downloadDir?.run {
-        findFile(SPIDER_INFO_FILENAME)?.let { file ->
-            readFromUniFile(file)?.takeIf {
-                it.gid == galleryInfo.gid && it.token == galleryInfo.token
+    private fun readSpiderInfoFromLocal(): SpiderInfo? {
+        val downloaded = mSpiderDen.downloadDir?.run {
+            findFile(SPIDER_INFO_FILENAME)?.let { file ->
+                readFromUniFile(file)?.takeIf {
+                    it.gid == galleryInfo.gid && it.token == galleryInfo.token
+                }
             }
         }
+        if (downloaded != null) return downloaded
+
+        val persistent = readFromPersistentStorage(galleryInfo.gid)?.takeIf {
+            it.gid == galleryInfo.gid && it.token == galleryInfo.token
+        }
+        if (persistent != null) return persistent
+
+        // Migrate progress saved by older versions in cacheDir.
+        return readFromCache(galleryInfo.gid)?.takeIf {
+            it.gid == galleryInfo.gid && it.token == galleryInfo.token
+        }?.also {
+            it.saveToPersistentStorage()
+        }
     }
-        ?: readFromCache(galleryInfo.gid)?.takeIf { it.gid == galleryInfo.gid && it.token == galleryInfo.token }
 
     private suspend fun readSpiderInfoFromInternet(): SpiderInfo? {
         val url = EhUrl.getGalleryDetailUrl(
@@ -466,7 +480,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
     private fun writeSpiderInfoToLocal() {
         if (!isReady) return
         mSpiderDen.downloadDir?.run { createFile(SPIDER_INFO_FILENAME)?.also { mSpiderInfo.saveToUniFile(it) } }
-        mSpiderInfo.saveToCache()
+        mSpiderInfo.saveToPersistentStorage()
     }
 
     private fun isStateDone(state: Int): Boolean = state == STATE_FINISHED || state == STATE_FAILED
